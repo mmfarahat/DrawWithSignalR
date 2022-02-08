@@ -1,0 +1,200 @@
+﻿<html>
+<head>
+    <title>draw</title>
+    <script src="Scripts/jquery-1.6.4.min.js"></script>
+    <script src="Scripts/jquery.signalR-2.1.2.min.js"></script>
+    <script src="signalr/hubs"></script>
+    <script type="text/javascript">
+        var canvas, ctx, flag = false,
+            prevX = 0,
+            currX = 0,
+            prevY = 0,
+            currY = 0,
+            dot_flag = false;
+        var drawHub;
+        var img;
+        clearCanvas = function () {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        };
+        var x = "black",
+            y = 2;
+
+
+
+        function init() {
+            canvas = document.getElementById('can');
+            ctx = canvas.getContext("2d");
+            w = canvas.width;
+            h = canvas.height;
+
+            
+            canvas.addEventListener("mousemove", function (e) {
+                findxy('move', e);
+            }, false);
+            canvas.addEventListener("mousedown", function (e) {
+                findxy('down', e);
+            }, false);
+            canvas.addEventListener("mouseup", function (e) {
+                findxy('up', e);
+            }, false);
+            canvas.addEventListener("mouseout", function (e) {
+                findxy('out', e);
+            }, false);
+            canvas.addEventListener("touchstart", function (e) {
+                findxy('touchstart', e);
+            }, false);
+            canvas.addEventListener("touchmove", function (e) {
+                findxy('touchmove', e);
+            }, false);
+            canvas.addEventListener("touchend", function (e) {
+                findxy('touchend', e);
+            }, false);
+
+
+             img = document.createElement("img");
+            // Image for loading	
+            img.addEventListener("load", function () {
+                clearCanvas();
+                ctx.drawImage(img, 0, 0);
+            }, false);
+
+            // To enable drag and drop
+            canvas.addEventListener("dragover", function (evt) {
+                evt.preventDefault();
+            }, false);
+
+            // Handle dropped image file - only Firefox and Google Chrome
+            canvas.addEventListener("drop", function (evt) {
+                var files = evt.dataTransfer.files;
+                if (files.length > 0) {
+                    var file = files[0];
+                    if (typeof FileReader !== "undefined" && file.type.indexOf("image") != -1) {
+                        var reader = new FileReader();
+                        // Note: addEventListener doesn't work in Google Chrome for this event
+                        reader.onload = function (evt) {
+                            img.src = evt.target.result;
+                        };
+
+                        reader.onloadend = function() {
+                            var imageEncoded = reader.result;
+
+
+                            // prepare FormData
+                            var formData = new FormData();
+                            //we still have to use back some of old file data 
+                            //since new file doesn't contains original file data
+                            formData.append("filename", file.name);
+                            formData.append("filetype", file.type);
+                            formData.append("file", file);
+
+                            //submit formData using $.ajax         
+                            $.ajax({
+                                url: "Upload.aspx",
+                                type: "POST",
+                                data: formData,
+                                processData: false,
+                                contentType: false,
+                                success: function (data) {
+                                    drawHub.server.drawImage(data);
+                                }
+                            });
+
+
+                            
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                }
+                evt.preventDefault();
+            }, false);
+
+        }
+
+        function draw() {
+            ctx.beginPath();
+            ctx.moveTo(prevX, prevY);
+            ctx.lineTo(currX, currY);
+            ctx.strokeStyle = x;
+            ctx.lineWidth = y;
+            ctx.stroke();
+            ctx.closePath();
+        }
+
+        function findxy(res, e) {
+            if (res == 'down' || res == 'touchstart') {
+                prevX = currX;
+                prevY = currY;
+                if (res == 'touchstart') {
+                    currX = e.targetTouches[0].pageX - canvas.offsetLeft;
+                    currY = e.targetTouches[0].pageY - canvas.offsetTop;
+                } else {
+                    currX = e.clientX - canvas.offsetLeft;
+                    currY = e.clientY - canvas.offsetTop;
+                }
+
+                flag = true;
+                dot_flag = true;
+                if (dot_flag) {
+                    ctx.beginPath();
+                    ctx.fillStyle = x;
+                    ctx.fillRect(currX, currY, 2, 2);
+                    ctx.closePath();
+                    dot_flag = false;
+                    drawHub.server.drawDot(currX, currY);
+                }
+            }
+            if (res == 'up' || res == "out" || res == 'touchend') {
+                flag = false;
+            }
+            if (res == 'move' || res == 'touchmove') {
+                if (flag) {
+                    prevX = currX;
+                    prevY = currY;
+                    if (res == 'touchmove') {
+                        currX = e.targetTouches[0].pageX - canvas.offsetLeft;
+                        currY = e.targetTouches[0].pageY - canvas.offsetTop;
+                    } else {
+                        currX = e.clientX - canvas.offsetLeft;
+                        currY = e.clientY - canvas.offsetTop;
+                    }
+                    drawHub.server.draw(prevX, prevY, currX, currY);
+                }
+            }
+        }
+
+      
+        $(document).ready(function () {
+            drawHub = $.connection.drawHub;
+            drawHub.client.drawOnClient = function (previousX, previousY, currentX, currentY) {
+                prevX = previousX;
+                currX = currentX;
+                prevY = previousY;
+                currY = currentY;
+                draw();
+            };
+
+            drawHub.client.drawDotOnClient = function ( currentX, currentY) {         
+                currX = currentX;
+                currY = currentY;
+                ctx.beginPath();
+                ctx.fillStyle = x;
+                ctx.fillRect(currX, currY, 2, 2);
+                ctx.closePath();
+          
+            };
+
+            drawHub.client.drawImageOnClient = function(imageUrl) {
+                img.src = imageUrl;
+            };
+
+            $.connection.hub.start().done(function () {
+                //drawHub.server.draw();
+            });
+        });
+    </script>
+</head>
+
+<body onload="init()">
+    <canvas id="can" width="800" height="800" style="position:absolute;top:10%;left:10%;border:2px solid;"></canvas>
+</body>
+</html>
